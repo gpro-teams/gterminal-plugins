@@ -1,0 +1,16 @@
+{
+  "manifest": 2,
+  "id": "example.hello",
+  "name": "Hello",
+  "version": "0.1.0",
+  "publisher": "example",
+  "engines": { "api": "1" },
+  "runtime": { "kind": "process", "exec": ".build/release/hello" },
+  "activation": ["onView:hello", "onSettings"],
+  "permissions": [],
+  "contributes": {
+    "settings": { "id": "hello", "title": "Hello", "icon": "hand.wave", "summary": "Swift 模板：一个清单，点进去看一项", "open": "page:hello" },
+    "island.pages": [{ "id": "hello", "title": "Hello" }],
+    "commands": [{ "id": "hello.open", "title": "Hello", "icon": "hand.wave", "aliases": ["模板"], "open": "page:hello" }]
+  }
+}

@@ -1,0 +1,94 @@
+# gTerminal 插件目录：按条目里写的 commit 编译、打包，生成 catalog.json，发 Release（gTerminal 从 releases/latest/download/catalog.json 拉）。
+# 三段，权限分开：
+#   plan    （只读）看哪些条目要重新编：新条目、版本或 commit 变了的
+#   build   （只读，每个插件单独一个任务）拉源码、编译、打包。插件自己的构建会跑代码（Package.swift 解析时就会执行），所以这里拿不到写权限
+#   release （能写）不跑任何插件代码：从包里重算 sha256 和清单，生成 catalog.json，发 Release
+# PR 只跑 plan 和 build（编得过才合并），不发布。不用 pull_request_target。
+name: catalog
+
+on:
+  push:
+    branches: [main]
+    paths: ["plugins/**", "scripts/**", ".github/workflows/catalog.yml"]
+  pull_request:
+    paths: ["plugins/**", "scripts/**"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: catalog-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      ids: ${{ steps.plan.outputs.ids }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 上一份目录（第一次发布时没有）
+        run: |
+          curl -fsSL -o prev.json "https://github.com/${{ github.repository }}/releases/latest/download/catalog.json" \
+            || echo '{"catalog": 1, "plugins": []}' > prev.json
+      - id: plan
+        run: echo "ids=$(python3 scripts/build.py plan --previous prev.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prev
+          path: prev.json
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.ids != '[]'
+    runs-on: macos-14
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        id: ${{ fromJSON(needs.plan.outputs.ids) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 scripts/build.py package "plugins/${{ matrix.id }}.json" --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.id }}
+          path: dist/
+
+  release:
+    needs: [plan, build]
+    # build 没有要编的时候是 skipped（比如只改了 withdrawn），照样发
+    if: ${{ always() && github.event_name != 'pull_request' && needs.plan.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: prev
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+          path: dist
+      - name: 生成 catalog.json（sha256、清单都从包里重算）
+        run: |
+          mkdir -p dist
+          python3 scripts/build.py catalog --previous prev.json --dist dist \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/catalog-${{ github.run_number }}" \
+            --out dist/catalog.json
+      - name: 发 Release（这次编的包 + catalog.json；没变的插件还用以前那个 Release 里的包）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "catalog-${{ github.run_number }}" dist/catalog.json $(ls dist/*.tar.gz 2>/dev/null) \
+            --repo "${{ github.repository }}" --title "目录 ${{ github.run_number }}" --notes "按 ${{ github.sha }} 生成" --latest
