@@ -44,7 +44,7 @@ jobs:
   build:
     needs: plan
     if: needs.plan.outputs.ids != '[]'
-    runs-on: macos-14
+    runs-on: macos-latest
     permissions:
       contents: read
     strategy:
