@@ -1,0 +1,8 @@
+{
+  "id": "example.hello",
+  "name": "Hello",
+  "summary": "Swift 模板：一个清单，点进去看一项。写插件从这里抄起",
+  "version": "0.1.0",
+  "license": "MIT",
+  "source": { "repo": "https://github.com/gpro-teams/gterminal-plugins", "commit": "a636cfb49ca0c52c1eb8f6c4f109bd022b8c27d5", "path": "plugins/hello" }
+}
