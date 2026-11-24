@@ -132,6 +132,9 @@ def cmd_package(a):
         exe = rt.get("exec") or ""
         if rt.get("kind") != "process" or not exe or exe.startswith("/") or ".." in exe:
             die("清单的 runtime 要是 process，exec 写相对仓库根的路径（不许 .. 和绝对路径）")
+        v1 = v1_problems(m)
+        if v1:
+            die("；".join(v1))
         if not any(os.path.exists(os.path.join(stage, n)) for n in ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING")):
             die("仓库根上要有许可证文件（LICENSE）")
         if os.path.exists(os.path.join(stage, "Package.swift")):
@@ -157,6 +160,23 @@ def cmd_package(a):
         print(json.dumps({"id": e["id"], "package": name, "sha256": sha256(out)}))
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+# v1 进程插件现在能用的（和 gTerminal 的 GTPluginManifest.processV1* 是同一份）：别的写了，gTerminal 不收这个条目
+V1_POINTS = {"settings", "island.pages", "commands", "drawer.rows", "events"}
+
+
+def v1_problems(m):
+    out = []
+    for k, v in (m.get("contributes") or {}).items():
+        if v and k not in V1_POINTS:
+            out.append(f"贡献点 {k} v1 进程插件还不能用")
+    if len((m.get("contributes") or {}).get("island.pages") or []) > 1:
+        out.append("v1 进程插件只能有一个岛页（别的页用子路径）")
+    for p in m.get("permissions") or []:
+        if p != "agent.events:quota" and not p.startswith("net:"):
+            out.append(f"权限 {p} v1 进程插件还不能用")
+    return out
 
 
 def safe_extract(tar_bytes, dest):
